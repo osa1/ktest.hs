@@ -61,13 +61,3 @@ argParser = CmdArgs
      <> metavar "num"
      <> help "Testing time limit (seconds)." )
   <*> argument Just mempty
-
--- TODO: show help message when it's run without arguments
-main :: IO ()
-main = execParser opts >>= print
-  where
-    opts = info (helper <*> argParser)
-      ( fullDesc
-     -- <> progDesc "ktest"
-     -- <> header ""
-     )

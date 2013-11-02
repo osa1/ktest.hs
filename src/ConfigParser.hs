@@ -13,6 +13,7 @@ import qualified Data.ByteString.Lazy as L
 
 import Types
 
+
 parseTestCase :: UNode String -> TestCase
 parseTestCase e@Element{eName="test", eAttributes=attrs, eChildren=children} =
     TestCase{
