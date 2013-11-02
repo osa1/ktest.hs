@@ -28,11 +28,14 @@ data TestCase = TestCase
     , programSpecificKRunOptions :: [PgmOption]
     } deriving (Show)
 
+data SkipOpt = SkipKompile | SkipPdf | SkipKRun deriving (Show)
+
 data KTestOptions = KTestOptions
     { verbose :: Bool
     , threads :: Int
     , timeout :: Int
     , tests   :: [TestCase]
+    , skips   :: [SkipOpt]
     } deriving (Show)
 
 data KTestError
@@ -43,5 +46,8 @@ data KTestError
 instance Error KTestError where
     strMsg = StrErr
 
-newtype K a = K { runK :: ReaderT KTestOptions (ErrorT KTestError IO) a }
-    deriving (Monad, MonadReader KTestOptions, MonadError KTestError , MonadIO)
+{-newtype K a = K { runK :: ReaderT KTestOptions (ErrorT KTestError IO) a }
+    deriving (Monad, MonadReader KTestOptions, MonadError KTestError , MonadIO)-}
+
+newtype K a = K { runK :: ErrorT KTestError IO a }
+    deriving (Monad, MonadError KTestError , MonadIO)

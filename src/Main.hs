@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
@@ -16,14 +16,14 @@ import           CmdArgs
 import           Types
 
 
-run :: K ()
-run = undefined
+run :: KTestOptions -> K ()
+run KTestOptions{..} = undefined
 
 -- TODO: show help message when it's run without arguments
 main :: IO ()
 main = do
     args <- execParser opts
-    ret <- runErrorT (runReaderT (runK run) (validate args))
+    ret  <- runErrorT (validate args >>= runK . run)
     case ret of
       Left err -> print err >> exitFailure
       Right () -> exitSuccess

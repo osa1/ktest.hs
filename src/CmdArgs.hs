@@ -12,7 +12,7 @@ import           System.FilePath     (takeDirectory, takeExtension)
 
 import           ConfigParser        (parseConfigFile)
 import           Types               (KTestError (..), KTestOptions (..),
-                                      TestCase (..))
+                                      TestCase (..), SkipOpt (..))
 
 
 data CmdArgs = CmdArgs
@@ -35,10 +35,10 @@ validate CmdArgs{..} =
         testCases <- liftIO $ parseConfigFile testFile
         -- FIXME: all other cmd options are being ignored here, maybe throw
         -- an error or warning
-        return KTestOptions{verbose=verbose, threads=threads', timeout=timeout', tests=testCases}
+        return KTestOptions{verbose=verbose, threads=threads', timeout=timeout', tests=testCases, skips=skips'}
       ".k"   -> do
         tc <- testCase
-        return KTestOptions{verbose=verbose, threads=threads', timeout=timeout', tests=[tc]}
+        return KTestOptions{verbose=verbose, threads=threads', timeout=timeout', tests=[tc], skips=skips'}
           where
             testCase = do
               ext <- extension'
@@ -59,6 +59,11 @@ validate CmdArgs{..} =
     extension' = case extension of
                    Nothing  -> throwError $ strMsg "--extension is required in single job mode"
                    Just ext -> return ext
+    skips' =
+      let ws = maybe [] words skip in
+      if "kompile" `elem` ws then [SkipKompile] else []
+        ++ if "pdf" `elem` ws then [SkipPdf] else []
+        ++ if "krun" `elem` ws then [SkipKRun] else []
 
 argParser :: Parser CmdArgs
 argParser = CmdArgs
