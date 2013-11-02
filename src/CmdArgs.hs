@@ -1,51 +1,66 @@
 {-# OPTIONS_GHC -Wall #-}
-{-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
+{-# LANGUAGE FlexibleContexts, NamedFieldPuns, RecordWildCards #-}
 
 module CmdArgs where
 
 
-import GHC.Conc (numCapabilities)
-import Options.Applicative
-import Control.Monad.Identity
-import System.FilePath (takeDirectory)
-import Data.Monoid
+import           Control.Monad.Error
+import           Data.Monoid
+import           GHC.Conc            (numCapabilities)
+import           Options.Applicative
+import           System.FilePath     (takeDirectory, takeExtension)
+
+import           ConfigParser        (parseConfigFile)
+import           Types               (KTestError (..), KTestOptions (..),
+                                      TestCase (..))
 
 
-data CmdArgs m = CmdArgs
-    { verbose     :: Bool
-    , programs    :: m FilePath -- ^ programs directory in single mode, root folder for programs in batch mode
-    , extension   :: Maybe String   -- ^ extension of programs to pass to krun
-    , exclude     :: Maybe String   -- ^ names of excluded program names
-    , results     :: m FilePath -- ^ directory that contains output files to compare output of krun
-    , skip        :: m String
-    , directory   :: m FilePath -- ^ directory where K definitions reside
-    , threads     :: m Int
-    , timeout     :: m Int
-    , testFile    :: FilePath
+data CmdArgs = CmdArgs
+    { verbose   :: Bool
+    , programs  :: Maybe FilePath -- ^ programs directory in single mode, root folder for programs in batch mode
+    , extension :: Maybe String   -- ^ extension of programs to pass to krun
+    , exclude   :: Maybe String   -- ^ names of excluded program names
+    , results   :: Maybe FilePath -- ^ directory that contains output files to compare output of krun
+    , skip      :: Maybe String
+    , directory :: Maybe FilePath -- ^ directory where K definitions reside
+    , threads   :: Maybe Int
+    , timeout   :: Maybe Int
+    , testFile  :: FilePath
     }
 
-validate :: CmdArgs Maybe -> CmdArgs Identity
+validate :: CmdArgs -> ErrorT KTestError IO KTestOptions
 validate CmdArgs{..} =
-    CmdArgs{ verbose
-           , programs=programs'
-           , extension
-           , exclude
-           , results=results'
-           , skip=skip'
-           , directory=directory'
-           , threads=threads'
-           , timeout=timeout'
-           , testFile
-           }
+    case takeExtension testFile of
+      ".xml" -> do
+        testCases <- liftIO $ parseConfigFile testFile
+        -- FIXME: all other cmd options are being ignored here, maybe throw
+        -- an error or warning
+        return KTestOptions{verbose=verbose, threads=threads', timeout=timeout', tests=testCases}
+      ".k"   -> do
+        tc <- testCase
+        return KTestOptions{verbose=verbose, threads=threads', timeout=timeout', tests=[tc]}
+          where
+            testCase = do
+              ext <- extension'
+              return $ TestCase
+                          { definition=testFile
+                          , programs=Just programs'
+                          , progFileExtension=Just ext
+                          , excludes=fmap words exclude
+                          , results=results
+                          , kompileOptions=[]
+                          , programSpecificKRunOptions=[]
+                          }
+      ext    -> throwError $ InvalidTestFileFmtErr ext
   where
-    programs' = return $ maybe (takeDirectory testFile) id programs
-    results' = return $ maybe (takeDirectory testFile) id results
-    skip' = undefined
-    directory' = return $ maybe "." id directory
-    threads' = return $ maybe numCapabilities id threads
-    timeout' = return $ maybe 100 id timeout
+    threads' = maybe numCapabilities id threads
+    timeout' = maybe 100 id timeout
+    programs' = maybe (takeDirectory testFile) id programs
+    extension' = case extension of
+                   Nothing  -> throwError $ strMsg "--extension is required in single job mode"
+                   Just ext -> return ext
 
-argParser :: Parser (CmdArgs Maybe)
+argParser :: Parser CmdArgs
 argParser = CmdArgs
   <$> switch
       ( long "verbose"

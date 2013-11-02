@@ -17,30 +17,7 @@ import           Types
 
 
 run :: K ()
-run = do
-    f <- asks testFile
-    case takeExtension f of
-      ".xml" -> runBatchMode
-      ".k"   -> runSingleMode
-      ext    -> throwError $ InvalidTestFileFmtErr ext
-
-
-runSingleMode :: K ()
-runSingleMode = undefined
-  where
-    programFiles :: K [FilePath]
-    programFiles = do
-      psdir <- liftM runIdentity $ asks CmdArgs.programs
-      psfmt <- asks extension
-      case psfmt of
-        Nothing -> throwError $ strMsg "--extension parameter is required in single job mode"
-        Just fmt -> do
-          dirContents <- liftIO $ getDirectoryContents psdir
-          return $ filter ((==) fmt . takeExtension) dirContents
-
-
-runBatchMode :: K ()
-runBatchMode = undefined
+run = undefined
 
 -- TODO: show help message when it's run without arguments
 main :: IO ()

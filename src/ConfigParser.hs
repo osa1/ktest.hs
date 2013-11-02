@@ -57,7 +57,7 @@ parseTestCase e@Element{eName="test", eAttributes=attrs, eChildren=children} =
         Just val -> val
 parseTestCase e = error (show e)
 
-parseTestFile :: [UNode String] -> TestFile
+parseTestFile :: [UNode String] -> [TestCase]
 parseTestFile = map parseTestCase . removeTextNodes
 
 removeTextNodes :: [UNode String] -> [UNode String]
@@ -66,7 +66,7 @@ removeTextNodes = filter p
     p Element{} = True
     p Text{}    = False
 
-parseConfigFile :: FilePath -> IO (TestFile)
+parseConfigFile :: FilePath -> IO [TestCase]
 parseConfigFile filepath = do
     fileContent <- L.readFile filepath
     let (xml, mErr) = parse defaultParseOptions fileContent :: (UNode String, Maybe XMLParseError)
@@ -85,4 +85,3 @@ main = do
       _ -> do
         hPutStrLn stderr "Usage: program <file.xml>"
         exitWith $ ExitFailure 1
-
