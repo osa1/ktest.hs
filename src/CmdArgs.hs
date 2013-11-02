@@ -9,6 +9,7 @@ import           Data.Monoid
 import           Data.Maybe          (fromMaybe)
 import           GHC.Conc            (numCapabilities)
 import           Options.Applicative
+import           System.Directory    (getCurrentDirectory)
 import           System.FilePath     (takeDirectory, takeExtension, (</>))
 
 import           ConfigParser        (parseConfigFile)
@@ -23,7 +24,7 @@ data CmdArgs = CmdArgs
     , exclude   :: Maybe String   -- ^ names of excluded program names
     , results   :: Maybe FilePath -- ^ directory that contains output files to compare output of krun
     , skip      :: Maybe String
-    , directory :: Maybe FilePath -- ^ directory where K definitions reside
+    , directory :: FilePath       -- ^ directory where K definitions reside
     , threads   :: Maybe Int
     , timeout   :: Maybe Int
     , testFile  :: FilePath
@@ -37,16 +38,15 @@ validate CmdArgs{..} = do
         opts' = case programs of
                   Nothing -> opts
                   Just ps -> opts{tests=map (normalizeProgramPath ps) (tests opts)}
-        opts'' = case directory of
+        opts'' = case results of
                    Nothing -> opts'
-                   Just d  -> opts'{tests=map (normalizeDefinitionPath d) (tests opts')}
-        opts''' = case results of
-                    Nothing -> opts''
-                    Just d  -> opts''{tests=map (normalizeResultPath d) (tests opts'')}
-    return opts'''
+                   Just d  -> opts'{tests=map (normalizeResultPath d) (tests opts')}
+    return opts''
   where
     tcs = case takeExtension testFile of
-            ".xml" -> liftIO $ parseConfigFile testFile
+            ".xml" -> liftIO $ do
+              tests <- parseConfigFile testFile
+              return (map (normalizeDefinitionPath directory) tests)
             ".k"   -> do
               ext <- extension'
               return [TestCase
@@ -75,8 +75,8 @@ validate CmdArgs{..} = do
         ++ if "pdf" `elem` ws then [SkipPdf] else []
         ++ [SkipKRun | "krun" `elem` ws]
 
-argParser :: Parser CmdArgs
-argParser = CmdArgs
+argParser :: FilePath -> Parser CmdArgs
+argParser currentDir = CmdArgs
   <$> switch
       ( long "verbose"
      <> short 'v'
@@ -101,11 +101,12 @@ argParser = CmdArgs
       ( long "skip"
      <> metavar "steps"
      <> help "The list of steps separated by whitespace to be skipped. A step is either [kompile|pdf|programs]." ))
-  <*> optional (strOption
+  <*> strOption
       ( long "directory"
      <> short 'd'
+     <> value currentDir
      <> metavar "dir"
-     <> help "A root directory where K definitions reside. By default this is the current directory. Valid only in batch mode." ))
+     <> help "A root directory where K definitions reside. By default this is the current directory. Valid only in batch mode." )
   <*> optional (option -- TODO: option error messages are not helpful
       ( long "threads"
      <> metavar "num"
