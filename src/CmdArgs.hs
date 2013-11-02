@@ -6,9 +6,10 @@ module CmdArgs where
 
 import           Control.Monad.Error
 import           Data.Monoid
+import           Data.Maybe          (fromMaybe)
 import           GHC.Conc            (numCapabilities)
 import           Options.Applicative
-import           System.FilePath     (takeDirectory, takeExtension)
+import           System.FilePath     (takeDirectory, takeExtension, (</>))
 
 import           ConfigParser        (parseConfigFile)
 import           Types               (KTestError (..), KTestOptions (..),
@@ -29,33 +30,42 @@ data CmdArgs = CmdArgs
     }
 
 validate :: CmdArgs -> ErrorT KTestError IO KTestOptions
-validate CmdArgs{..} =
-    case takeExtension testFile of
-      ".xml" -> do
-        testCases <- liftIO $ parseConfigFile testFile
-        -- FIXME: all other cmd options are being ignored here, maybe throw
-        -- an error or warning
-        return KTestOptions{verbose=verbose, threads=threads', timeout=timeout', tests=testCases, skips=skips'}
-      ".k"   -> do
-        tc <- testCase
-        return KTestOptions{verbose=verbose, threads=threads', timeout=timeout', tests=[tc], skips=skips'}
-          where
-            testCase = do
-              ext <- extension'
-              return $ TestCase
-                          { definition=testFile
-                          , programs=Just programs'
-                          , progFileExtension=Just ext
-                          , excludes=fmap words exclude
-                          , results=results
-                          , kompileOptions=[]
-                          , programSpecificKRunOptions=[]
-                          }
-      ext    -> throwError $ InvalidTestFileFmtErr ext
+validate CmdArgs{..} = do
+    testCases <- tcs
+    let opts = KTestOptions
+         {verbose=verbose, threads=threads', timeout=timeout', tests=testCases, skips=skips'}
+        opts' = case programs of
+                  Nothing -> opts
+                  Just ps -> opts{tests=map (normalizeProgramPath ps) (tests opts)}
+        opts'' = case directory of
+                   Nothing -> opts'
+                   Just d  -> opts'{tests=map (normalizeDefinitionPath d) (tests opts')}
+        opts''' = case results of
+                    Nothing -> opts''
+                    Just d  -> opts''{tests=map (normalizeResultPath d) (tests opts'')}
+    return opts'''
   where
-    threads' = maybe numCapabilities id threads
-    timeout' = maybe 100 id timeout
-    programs' = maybe (takeDirectory testFile) id programs
+    tcs = case takeExtension testFile of
+            ".xml" -> liftIO $ parseConfigFile testFile
+            ".k"   -> do
+              ext <- extension'
+              return [TestCase
+                         { definition=testFile
+                         , programs=maybe [] (: []) programs
+                         , progFileExtension=Just ext
+                         , excludes=fmap words exclude
+                         , result=results
+                         , kompileOptions=[]
+                         , programSpecificKRunOptions=[]
+                         }]
+            ext -> throwError $ InvalidTestFileFmtErr ext
+
+    normalizeProgramPath rootFolder tc    = tc{Types.programs = fmap (rootFolder </>) (Types.programs tc)}
+    normalizeResultPath rootFolder tc     = tc{result = fmap (rootFolder </>) (result tc)}
+    normalizeDefinitionPath rootFolder tc = tc{definition = rootFolder </> definition tc}
+
+    threads' = fromMaybe numCapabilities threads
+    timeout' = fromMaybe 100 timeout
     extension' = case extension of
                    Nothing  -> throwError $ strMsg "--extension is required in single job mode"
                    Just ext -> return ext
@@ -63,7 +73,7 @@ validate CmdArgs{..} =
       let ws = maybe [] words skip in
       if "kompile" `elem` ws then [SkipKompile] else []
         ++ if "pdf" `elem` ws then [SkipPdf] else []
-        ++ if "krun" `elem` ws then [SkipKRun] else []
+        ++ [SkipKRun | "krun" `elem` ws]
 
 argParser :: Parser CmdArgs
 argParser = CmdArgs

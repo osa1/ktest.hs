@@ -4,20 +4,35 @@
 module Main where
 
 
-import           Control.Monad.Error    (runErrorT, throwError, strMsg)
+import           Control.Monad.Error    (runErrorT, strMsg, throwError)
 import           Control.Monad.Identity (runIdentity)
 import           Control.Monad.Reader
+import           Data.Maybe             (fromJust)
 import           Options.Applicative
-import           System.Directory       (getDirectoryContents)
+import           System.Directory       (doesDirectoryExist, getDirectoryContents)
 import           System.Exit            (exitFailure, exitSuccess)
 import           System.FilePath        (takeExtension)
 
-import           CmdArgs
+import           CmdArgs                hiding (CmdArgs (..))
 import           Types
+
+import Debug.Trace (trace)
 
 
 run :: KTestOptions -> K ()
-run KTestOptions{..} = undefined
+run KTestOptions{..} = forM_ tests (runTest verbose threads timeout skips)
+
+runTest :: Bool -> Int -> Int -> [SkipOpt] -> TestCase -> K ()
+runTest verbose threads timeout sikps testcase = do
+    liftIO $ do
+      pfs <- progFiles
+      print pfs
+      mapM doesDirectoryExist pfs >>= print . and
+  where
+    progFiles = do
+      trace ("programs testcase = " ++ show (programs testcase)) (return ())
+      dirContents <- liftM concat $ mapM getDirectoryContents $ programs testcase
+      return $ filter ((==) (fromJust (progFileExtension testcase)) . takeExtension) dirContents
 
 -- TODO: show help message when it's run without arguments
 main :: IO ()

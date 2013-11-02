@@ -18,10 +18,10 @@ parseTestCase :: UNode String -> TestCase
 parseTestCase e@Element{eName="test", eAttributes=attrs, eChildren=children} =
     TestCase{
             definition=requiredField "definition" e
-          , programs=lookup "programs" attrs
+          , programs=maybe [] words (lookup "programs" attrs)
           , progFileExtension=lookup "extension" attrs
           , excludes=fmap words $ lookup "exclude" attrs
-          , results=lookup "results" attrs
+          , result=lookup "results" attrs
           , kompileOptions=nameValPairs "kompile-option" children
           , programSpecificKRunOptions=specifics children
           }

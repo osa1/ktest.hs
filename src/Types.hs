@@ -5,8 +5,8 @@ module Types where
 
 
 import           Control.Monad.Error
-import           Control.Monad.Identity
-import           Control.Monad.Reader
+--import           Control.Monad.Identity
+--import           Control.Monad.Reader
 
 
 type KompileOption = (String, Maybe String)   -- ^ (name, value) pair
@@ -16,14 +16,16 @@ data PgmOption
     | PgmOpt String [(String, Maybe String)]  -- ^ krun options for specific program
     deriving (Show)
 
+-- TODO: should create another data type for validated input, because most
+-- of this Maybes are redundant
 data TestCase = TestCase
     { -- required information in xml
       definition                 :: FilePath
       -- optional information
-    , programs                   :: Maybe FilePath
+    , programs                   :: [FilePath]
     , progFileExtension          :: Maybe String
     , excludes                   :: Maybe [String]
-    , results                    :: Maybe FilePath
+    , result                     :: Maybe FilePath
     , kompileOptions             :: [KompileOption]
     , programSpecificKRunOptions :: [PgmOption]
     } deriving (Show)
