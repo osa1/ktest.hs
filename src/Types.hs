@@ -3,10 +3,10 @@
 module Types where
 
 
-type KompileOption = (String, String)   -- ^ (name, value) pair
+type KompileOption = (String, Maybe String)   -- ^ (name, value) pair
 
 data PgmOption
-    = AllPgms [(String, String)]        -- ^ krun options for all programs
+    = AllPgms [(String, Maybe String)]        -- ^ krun options for all programs
     | PgmOpt String [(String, Maybe String)]  -- ^ krun options for specific program
     deriving (Show)
 
