@@ -7,22 +7,21 @@ module Main where
 import           Control.Concurrent.ParallelIO
 import           Control.Monad.Error
 import           Data.Maybe                    (fromMaybe)
+import           GHC.Conc                      (getNumProcessors,
+                                                setNumCapabilities)
 import           Options.Applicative
-import           System.Directory              (doesDirectoryExist,
-                                                doesFileExist,
-                                                getCurrentDirectory,
+import           System.Directory              (getCurrentDirectory,
                                                 getDirectoryContents)
 import           System.Exit                   (ExitCode (..), exitFailure,
                                                 exitSuccess)
 import           System.FilePath               (addExtension, dropExtension,
-                                                takeExtension, takeDirectory, (</>))
+                                                takeDirectory, takeExtension,
+                                                (</>))
 import           System.IO                     (hGetContents, hPutStr)
 import           System.Process
 
 import           CmdArgs                       hiding (CmdArgs (..))
 import           Types
-
-import           Debug.Trace                   (trace)
 
 
 run :: KTestOptions -> K ()
@@ -77,8 +76,8 @@ runKRuns verbose _ timeout tests = do
     --results <- liftIO $ parallel $ map mkKrunProc tests
     ts <- liftM concat $ mapM collectCompFiles tests
     liftIO $ print ts
-    --rets <- liftIO $ parallel $ map mkKrunProc ts
-    --liftIO $ print rets
+    rets <- liftIO $ parallel $ map mkKrunProc ts
+    liftIO $ print rets
     return ()
     --liftIO $ print results
   where
@@ -118,7 +117,8 @@ runKRuns verbose _ timeout tests = do
                           '.' : rest -> ext == rest
                           _ -> False
 
-    -- | Collect (definition path, program, stdin, stdout, stderr) file paths for test case
+    -- | Collect (definition path, program, stdin, stdout, stderr) file paths for test case,
+    --   all paths should be absolute
     collectCompFiles :: TestCase -> K [(FilePath, FilePath, Maybe FilePath, Maybe FilePath, Maybe FilePath)]
     collectCompFiles tc@TestCase{definition=defPath, programs=programs, progFileExtension=ext} =
       case ext of
@@ -136,11 +136,15 @@ runKRuns verbose _ timeout tests = do
                              stdinr  = if stdinf  `elem` dirContents then Just (p </> stdinf) else Nothing
                              stdoutr = if stdoutf `elem` dirContents then Just (p </> stdoutf) else Nothing
                              stderrr = if stderrf `elem` dirContents then Just (p </> stderrf) else Nothing
-                          in (defPath, f, stdinr, stdoutr, stderrr)) progFiles
+                          in (defPath, p </> f, stdinr, stdoutr, stderrr)) progFiles
 
 -- TODO: show help message when it's run without arguments
 main :: IO ()
 main = do
+    -- this should remove necessity of +RTS -Nn -RTS arguments and set n to
+    -- number of processors
+    getNumProcessors >>= setNumCapabilities
+
     currentDir <- getCurrentDirectory
     args <- execParser (opts currentDir)
     ret  <- runErrorT (validate args >>= runK . run)

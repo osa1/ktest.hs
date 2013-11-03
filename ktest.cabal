@@ -32,6 +32,6 @@ executable ktest
   default-language:    Haskell2010
 
   if flag(devel)
-    ghc-options: -threaded -O0
+    ghc-options: -threaded -O0 -static -optl-pthread -optl-static
   else
-    ghc-options: -threaded -O2
+    ghc-options: -threaded -O2 -static -optl-pthread -optl-static
