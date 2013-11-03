@@ -91,7 +91,7 @@ runKRuns verbose _ timeout tests = do
       putStrLn $ "creating krun process with args: " ++ show args
       (Just stdin, Just stdout, Just stderr, phandle) <-
         createProcess (proc "krun" args){std_in=CreatePipe, std_out=CreatePipe, std_err=CreatePipe}
-      maybe (return ()) (\f -> hPutStr stdout =<< readFile f) stdinf
+      maybe (return ()) (\f -> hPutStr stdin =<< readFile f) stdinf
       exitCode <- waitForProcess phandle
       case exitCode of
         ExitFailure _ -> do
