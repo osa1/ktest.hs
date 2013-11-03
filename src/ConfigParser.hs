@@ -3,15 +3,12 @@
 module ConfigParser where
 
 
-import Text.XML.Expat.Tree
-import Text.XML.Expat.Format
-import System.Environment
-import System.Exit
-import System.IO
-import Data.Maybe
-import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy  as L
+import           Data.Maybe
+import           Text.XML.Expat.Format
+import           Text.XML.Expat.Tree
 
-import Types
+import           Types
 
 
 parseTestCase :: UNode String -> TestCase
@@ -76,12 +73,3 @@ parseConfigFile filepath = do
     case mErr of
       Nothing -> return ret
       Just err -> error $ "XML Parse failed: " ++ show err
-
-main :: IO ()
-main = do
-    args <- getArgs
-    case args of
-      [filename] -> parseConfigFile filename >>= print
-      _ -> do
-        hPutStrLn stderr "Usage: program <file.xml>"
-        exitWith $ ExitFailure 1

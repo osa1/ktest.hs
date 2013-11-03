@@ -9,8 +9,7 @@ import           Data.Monoid
 import           Data.Maybe          (fromMaybe)
 import           GHC.Conc            (numCapabilities)
 import           Options.Applicative
-import           System.Directory    (getCurrentDirectory)
-import           System.FilePath     (takeDirectory, takeExtension, (</>))
+import           System.FilePath     (takeExtension, (</>))
 
 import           ConfigParser        (parseConfigFile)
 import           Types               (KTestError (..), KTestOptions (..),
@@ -71,8 +70,8 @@ validate CmdArgs{..} = do
                    Just ext -> return ext
     skips' =
       let ws = maybe [] words skip in
-      (if "kompile" `elem` ws then [SkipKompile] else [])
-        ++ (if "pdf" `elem` ws then [SkipPdf] else [])
+      [SkipKompile | "kompile" `elem` ws]
+        ++ [SkipPdf | "pdf" `elem` ws]
         ++ [SkipKRun | "krun" `elem` ws]
 
 argParser :: FilePath -> Parser CmdArgs

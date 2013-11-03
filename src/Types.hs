@@ -5,8 +5,6 @@ module Types where
 
 
 import           Control.Monad.Error
---import           Control.Monad.Identity
---import           Control.Monad.Reader
 
 
 type KompileOption = (String, Maybe String)   -- ^ (name, value) pair
@@ -16,12 +14,8 @@ data PgmOption
     | PgmOpt String [(String, Maybe String)]  -- ^ krun options for specific program
     deriving (Show)
 
--- TODO: should create another data type for validated input, because most
--- of this Maybes are redundant
 data TestCase = TestCase
-    { -- required information in xml
-      definition                 :: FilePath
-      -- optional information
+    { definition                 :: FilePath
     , programs                   :: [FilePath]
     , progFileExtension          :: Maybe String
     , excludes                   :: [String]
@@ -47,9 +41,6 @@ data KTestError
 
 instance Error KTestError where
     strMsg = StrErr
-
-{-newtype K a = K { runK :: ReaderT KTestOptions (ErrorT KTestError IO) a }
-    deriving (Monad, MonadReader KTestOptions, MonadError KTestError , MonadIO)-}
 
 newtype K a = K { runK :: ErrorT KTestError IO a }
     deriving (Monad, MonadError KTestError , MonadIO)
