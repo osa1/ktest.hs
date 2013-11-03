@@ -24,7 +24,7 @@ data TestCase = TestCase
       -- optional information
     , programs                   :: [FilePath]
     , progFileExtension          :: Maybe String
-    , excludes                   :: Maybe [String]
+    , excludes                   :: [String]
     , result                     :: Maybe FilePath
     , kompileOptions             :: [KompileOption]
     , programSpecificKRunOptions :: [PgmOption]

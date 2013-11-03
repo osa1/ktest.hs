@@ -16,7 +16,7 @@ import           System.Exit                   (ExitCode (..), exitFailure,
                                                 exitSuccess)
 import           System.FilePath               (addExtension, dropExtension,
                                                 takeDirectory, takeExtension,
-                                                (</>))
+                                                takeFileName, (</>))
 import           System.IO                     (hGetContents, hPutStr)
 import           System.Process
 
@@ -104,6 +104,7 @@ runKRuns verbose _ timeout tests = do
               errorFile <- readFile f
               return (errorFile == err)
         ExitSuccess -> do
+          putStrLn $ concat [ "krun ended, args were: ", show args ]
           case stdoutf of
             Nothing -> return True
             Just f -> do
@@ -120,14 +121,14 @@ runKRuns verbose _ timeout tests = do
     -- | Collect (definition path, program, stdin, stdout, stderr) file paths for test case,
     --   all paths should be absolute
     collectCompFiles :: TestCase -> K [(FilePath, FilePath, Maybe FilePath, Maybe FilePath, Maybe FilePath)]
-    collectCompFiles tc@TestCase{definition=defPath, programs=programs, progFileExtension=ext} =
+    collectCompFiles tc@TestCase{definition=defPath, excludes=excludes, programs=programs, progFileExtension=ext} =
       case ext of
         Nothing   -> -- skip the test
                      return []
         Just ext' -> liftIO $ do
           liftM concat $ forM programs $ \p -> do
             dirContents <- getDirectoryContents p
-            let progFiles = filter (checkExt ext') dirContents
+            let progFiles = filter (\f -> checkExt ext' f && not (takeFileName f `elem` excludes)) dirContents
             return $ map (\f ->
                          let stdinf  = dropExtension f `addExtension` ext' `addExtension` "in"
                              stdoutf = dropExtension f `addExtension` ext' `addExtension` "out"

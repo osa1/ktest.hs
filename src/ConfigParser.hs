@@ -20,7 +20,7 @@ parseTestCase e@Element{eName="test", eAttributes=attrs, eChildren=children} =
             definition=requiredField "definition" e
           , programs=maybe [] words (lookup "programs" attrs)
           , progFileExtension=lookup "extension" attrs
-          , excludes=fmap words $ lookup "exclude" attrs
+          , excludes=maybe [] words (lookup "exclude" attrs)
           , result=lookup "results" attrs
           , kompileOptions=nameValPairs "kompile-option" children
           , programSpecificKRunOptions=specifics children
