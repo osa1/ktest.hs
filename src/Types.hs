@@ -30,7 +30,7 @@ data TestCase = TestCase
     , programSpecificKRunOptions :: [PgmOption]
     } deriving (Show)
 
-data SkipOpt = SkipKompile | SkipPdf | SkipKRun deriving (Show)
+data SkipOpt = SkipKompile | SkipPdf | SkipKRun deriving (Show, Eq)
 
 data KTestOptions = KTestOptions
     { verbose :: Bool

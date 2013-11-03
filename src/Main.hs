@@ -4,24 +4,77 @@
 module Main where
 
 
-import           Control.Monad.Error    (runErrorT, strMsg, throwError)
-import           Control.Monad.Identity (runIdentity)
+import           Control.Concurrent.ParallelIO
+import           Control.Monad.Error           (runErrorT, strMsg, throwError)
+import           Control.Monad.Identity        (runIdentity)
 import           Control.Monad.Reader
-import           Data.Maybe             (fromJust)
+import           Data.Maybe                    (fromJust, fromMaybe)
 import           Options.Applicative
-import           System.Directory       (doesDirectoryExist, doesFileExist,
-                                         getDirectoryContents, getCurrentDirectory)
-import           System.Exit            (exitFailure, exitSuccess)
-import           System.FilePath        (takeExtension)
+import           System.Directory              (doesDirectoryExist,
+                                                doesFileExist,
+                                                getCurrentDirectory,
+                                                getDirectoryContents)
+import           System.Exit                   (ExitCode (..), exitFailure,
+                                                exitSuccess)
+import           System.FilePath               (takeExtension)
+import           System.IO
+import           System.Process
 
-import           CmdArgs                hiding (CmdArgs (..))
+import           CmdArgs                       hiding (CmdArgs (..))
 import           Types
 
-import           Debug.Trace            (trace)
+import           Debug.Trace                   (trace)
 
 
 run :: KTestOptions -> K ()
-run KTestOptions{..} = forM_ tests (runTest verbose threads timeout skips)
+run KTestOptions{..} = do
+    -- TODO: thread numbers are ignored right now
+    liftIO $ print skips
+    ss <- if SkipKompile `elem` skips
+            then return Nothing
+            else liftM Just (runKompiles verbose threads tests)
+    unless (SkipPdf `elem` skips) $ runPdfs verbose threads (fromMaybe tests ss)
+    unless (SkipKRun `elem` skips) $ runKRuns verbose threads timeout (fromMaybe tests ss)
+    return ()
+
+runKompiles :: Bool -> Int -> [TestCase] -> K [TestCase]
+runKompiles verbose _ tests = do
+    --when verbose $ liftIO . putStrLn $ compiling
+    results <- liftIO $ parallel $ map mkKompileProc tests
+    liftIO $ print (map fst results)
+    return (map snd results)
+  where
+    mkKompileProc :: TestCase -> IO (Bool, TestCase)
+    mkKompileProc tc = do
+      let args = [definition tc]
+      putStrLn $ "creating kompile process with args: " ++ show args
+      (_, _, Just stderr, phandle) <- createProcess (proc "kompile" args){std_err=CreatePipe}
+      exitCode <- waitForProcess phandle
+      case exitCode of
+        ExitFailure i -> do
+          errMsg <- hGetContents stderr
+          putStrLn $ concat [ "kompile failed: ", errMsg, "\nargs were: ", show args ]
+          return (False, tc)
+        ExitSuccess -> return (True, tc)
+
+runPdfs :: Bool -> Int -> [TestCase] -> K ()
+runPdfs verbose _ tests = liftIO $ parallel_ $ map mkPdfProc tests
+  where
+    mkPdfProc :: TestCase -> IO Bool
+    mkPdfProc tc = do
+      let args = [definition tc, "--backend=pdf"]
+      putStrLn $ "creating kompile process with args: " ++ show args
+      (_, _, Just stderr, phandle) <- createProcess (proc "kompile" args){std_err=CreatePipe}
+      exitCode <- waitForProcess phandle
+      case exitCode of
+        ExitFailure i -> do
+          errMsg <- hGetContents stderr
+          putStrLn $ concat [ "kompile failed: ", errMsg, "\nargs were: ", show args ]
+          return False
+        ExitSuccess -> return True
+
+runKRuns :: Bool -> Int -> Int -> [TestCase] -> K ()
+runKRuns = undefined
 
 runTest :: Bool -> Int -> Int -> [SkipOpt] -> TestCase -> K ()
 runTest verbose threads timeout skips testcase = do

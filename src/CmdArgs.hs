@@ -71,8 +71,8 @@ validate CmdArgs{..} = do
                    Just ext -> return ext
     skips' =
       let ws = maybe [] words skip in
-      if "kompile" `elem` ws then [SkipKompile] else []
-        ++ if "pdf" `elem` ws then [SkipPdf] else []
+      (if "kompile" `elem` ws then [SkipKompile] else [])
+        ++ (if "pdf" `elem` ws then [SkipPdf] else [])
         ++ [SkipKRun | "krun" `elem` ws]
 
 argParser :: FilePath -> Parser CmdArgs
