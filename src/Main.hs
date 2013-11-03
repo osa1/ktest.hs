@@ -5,10 +5,8 @@ module Main where
 
 
 import           Control.Concurrent.ParallelIO
-import           Control.Monad.Error           (runErrorT, strMsg, throwError)
-import           Control.Monad.Identity        (runIdentity)
-import           Control.Monad.Reader
-import           Data.Maybe                    (fromJust, fromMaybe)
+import           Control.Monad.Error
+import           Data.Maybe                    (fromMaybe)
 import           Options.Applicative
 import           System.Directory              (doesDirectoryExist,
                                                 doesFileExist,
@@ -16,8 +14,9 @@ import           System.Directory              (doesDirectoryExist,
                                                 getDirectoryContents)
 import           System.Exit                   (ExitCode (..), exitFailure,
                                                 exitSuccess)
-import           System.FilePath               (takeExtension)
-import           System.IO
+import           System.FilePath               (addExtension, dropExtension,
+                                                takeExtension, takeDirectory, (</>))
+import           System.IO                     (hGetContents, hPutStr)
 import           System.Process
 
 import           CmdArgs                       hiding (CmdArgs (..))
@@ -27,9 +26,9 @@ import           Debug.Trace                   (trace)
 
 
 run :: KTestOptions -> K ()
-run KTestOptions{..} = do
+run opts@KTestOptions{..} = do
     -- TODO: thread numbers are ignored right now
-    liftIO $ print skips
+    liftIO $ print opts
     ss <- if SkipKompile `elem` skips
             then return Nothing
             else liftM Just (runKompiles verbose threads tests)
@@ -51,7 +50,7 @@ runKompiles verbose _ tests = do
       (_, _, Just stderr, phandle) <- createProcess (proc "kompile" args){std_err=CreatePipe}
       exitCode <- waitForProcess phandle
       case exitCode of
-        ExitFailure i -> do
+        ExitFailure _ -> do
           errMsg <- hGetContents stderr
           putStrLn $ concat [ "kompile failed: ", errMsg, "\nargs were: ", show args ]
           return (False, tc)
@@ -67,29 +66,77 @@ runPdfs verbose _ tests = liftIO $ parallel_ $ map mkPdfProc tests
       (_, _, Just stderr, phandle) <- createProcess (proc "kompile" args){std_err=CreatePipe}
       exitCode <- waitForProcess phandle
       case exitCode of
-        ExitFailure i -> do
+        ExitFailure _ -> do
           errMsg <- hGetContents stderr
           putStrLn $ concat [ "kompile failed: ", errMsg, "\nargs were: ", show args ]
           return False
         ExitSuccess -> return True
 
 runKRuns :: Bool -> Int -> Int -> [TestCase] -> K ()
-runKRuns = undefined
-
-runTest :: Bool -> Int -> Int -> [SkipOpt] -> TestCase -> K ()
-runTest verbose threads timeout skips testcase = do
-    liftIO $ print testcase
-    programTests <- liftIO $ do
-      pfs <- progFiles
-      liftM and $ mapM doesDirectoryExist pfs
-    definitionTest <- liftIO $ doesFileExist (definition testcase)
-    liftIO $ putStrLn (definition testcase)
-    liftIO $ print [show programTests, show definitionTest]
+runKRuns verbose _ timeout tests = do
+    --results <- liftIO $ parallel $ map mkKrunProc tests
+    ts <- liftM concat $ mapM collectCompFiles tests
+    liftIO $ print ts
+    --rets <- liftIO $ parallel $ map mkKrunProc ts
+    --liftIO $ print rets
+    return ()
+    --liftIO $ print results
   where
-    progFiles = do
-      trace ("programs testcase = " ++ show (programs testcase)) (return ())
-      dirContents <- liftM concat $ mapM getDirectoryContents $ programs testcase
-      return $ filter ((==) (fromJust (progFileExtension testcase)) . takeExtension) dirContents
+    -- | Run program, passing stdin file as input,
+    --     - if it returns 0, compare output with stdout file (if it exists)
+    --     - if it returns non-zero, compare stderr with stderr file (same)
+    -- TODO: what happens to stdout if program returned non-zero?
+    mkKrunProc :: (FilePath, FilePath, Maybe FilePath, Maybe FilePath, Maybe FilePath) -> IO Bool
+    mkKrunProc (defPath, prog, stdinf, stdoutf, stderrf) = do
+      let args = [prog, "--directory=" ++ takeDirectory defPath]
+      putStrLn $ "creating krun process with args: " ++ show args
+      (Just stdin, Just stdout, Just stderr, phandle) <-
+        createProcess (proc "krun" args){std_in=CreatePipe, std_out=CreatePipe, std_err=CreatePipe}
+      maybe (return ()) (\f -> hPutStr stdout =<< readFile f) stdinf
+      exitCode <- waitForProcess phandle
+      case exitCode of
+        ExitFailure _ -> do
+          err <- hGetContents stderr
+          case stderrf of
+            Nothing -> do
+              putStrLn $ concat [ "krun failed: ", err, "\nargs were: ", show args ]
+              return False
+            Just f -> do
+              errorFile <- readFile f
+              return (errorFile == err)
+        ExitSuccess -> do
+          case stdoutf of
+            Nothing -> return True
+            Just f -> do
+              outputFile <- readFile f
+              output <- hGetContents stdout
+              return $ outputFile == output
+
+    checkExt :: String -> FilePath -> Bool
+    --checkExt ext path | trace (show (ext, path)) False = undefined
+    checkExt ext path = case takeExtension path of
+                          '.' : rest -> ext == rest
+                          _ -> False
+
+    -- | Collect (definition path, program, stdin, stdout, stderr) file paths for test case
+    collectCompFiles :: TestCase -> K [(FilePath, FilePath, Maybe FilePath, Maybe FilePath, Maybe FilePath)]
+    collectCompFiles tc@TestCase{definition=defPath, programs=programs, progFileExtension=ext} =
+      case ext of
+        Nothing   -> -- skip the test
+                     return []
+        Just ext' -> liftIO $ do
+          liftM concat $ forM programs $ \p -> do
+            dirContents <- getDirectoryContents p
+            let progFiles = filter (checkExt ext') dirContents
+            return $ map (\f ->
+                         let stdinf  = dropExtension f `addExtension` ext' `addExtension` "in"
+                             stdoutf = dropExtension f `addExtension` ext' `addExtension` "out"
+                             stderrf = dropExtension f `addExtension` ext' `addExtension` "err"
+
+                             stdinr  = if stdinf  `elem` dirContents then Just (p </> stdinf) else Nothing
+                             stdoutr = if stdoutf `elem` dirContents then Just (p </> stdoutf) else Nothing
+                             stderrr = if stderrf `elem` dirContents then Just (p </> stderrf) else Nothing
+                          in (defPath, f, stdinr, stdoutr, stderrr)) progFiles
 
 -- TODO: show help message when it's run without arguments
 main :: IO ()
