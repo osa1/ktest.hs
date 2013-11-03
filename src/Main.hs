@@ -27,12 +27,18 @@ import           Types
 run :: KTestOptions -> K ()
 run opts@KTestOptions{..} = do
     -- TODO: thread numbers are ignored right now
-    liftIO $ print opts
+    --liftIO $ print opts
     ss <- if SkipKompile `elem` skips
-            then return Nothing
+            then do
+              liftIO $ putStrLn "Skipping kompile step."
+              return Nothing
             else liftM Just (runKompiles verbose threads tests)
-    unless (SkipPdf `elem` skips) $ runPdfs verbose threads (fromMaybe tests ss)
-    unless (SkipKRun `elem` skips) $ runKRuns verbose threads timeout (fromMaybe tests ss)
+    if SkipPdf `elem` skips
+      then liftIO $ putStrLn "Skipping pdf step."
+      else runPdfs verbose threads (fromMaybe tests ss)
+    if SkipKRun `elem` skips
+      then liftIO $ putStrLn "Skipping krun step."
+      else runKRuns verbose threads timeout (fromMaybe tests ss)
     return ()
 
 runKompiles :: Bool -> Int -> [TestCase] -> K [TestCase]
@@ -73,22 +79,25 @@ runPdfs verbose _ tests = liftIO $ parallel_ $ map mkPdfProc tests
 
 runKRuns :: Bool -> Int -> Int -> [TestCase] -> K ()
 runKRuns verbose _ timeout tests = do
-    --results <- liftIO $ parallel $ map mkKrunProc tests
     ts <- liftM concat $ mapM collectCompFiles tests
-    liftIO $ print ts
-    rets <- liftIO $ parallel $ map mkKrunProc ts
+    liftIO . putStrLn $ concat
+      [ "Running ", show (length ts), " programs in ", show (length tests), " test cases.\n"
+      , "    ", show $ countJusts (\(_, _, stdin, _, _) -> stdin) ts, " with inputs, "
+      , show $ countJusts (\(_, _, _, stdout, _) -> stdout) ts, " with outputs, "
+      , show $ countJusts (\(_, _, _, _, stderr) -> stderr) ts, " with errors."
+      ]
+    rets <- liftIO $ parallel $ zipWith (mkKrunProc (length ts)) [1 ..] ts
     liftIO $ print rets
-    return ()
-    --liftIO $ print results
+    liftIO . putStrLn $ if and rets then "SUCCESS" else "FAILED"
   where
     -- | Run program, passing stdin file as input,
     --     - if it returns 0, compare output with stdout file (if it exists)
     --     - if it returns non-zero, compare stderr with stderr file (same)
     -- TODO: what happens to stdout if program returned non-zero?
-    mkKrunProc :: (FilePath, FilePath, Maybe FilePath, Maybe FilePath, Maybe FilePath) -> IO Bool
-    mkKrunProc (defPath, prog, stdinf, stdoutf, stderrf) = do
+    mkKrunProc :: Int -> Int -> (FilePath, FilePath, Maybe FilePath, Maybe FilePath, Maybe FilePath) -> IO Bool
+    mkKrunProc totalTestN pnum (defPath, prog, stdinf, stdoutf, stderrf) = do
       let args = [prog, "--directory=" ++ takeDirectory defPath]
-      putStrLn $ "creating krun process with args: " ++ show args
+      putStrLn $ concat [ "krun ", unwords args, " [", show pnum, " / ", show totalTestN, "]" ]
       (Just stdin, Just stdout, Just stderr, phandle) <-
         createProcess (proc "krun" args){std_in=CreatePipe, std_out=CreatePipe, std_err=CreatePipe}
       maybe (return ()) (\f -> hPutStr stdin =<< readFile f) stdinf
@@ -98,19 +107,28 @@ runKRuns verbose _ timeout tests = do
           err <- hGetContents stderr
           case stderrf of
             Nothing -> do
-              putStrLn $ concat [ "krun failed: ", err, "\nargs were: ", show args ]
+              putStrLn $ concat [ "FAILURE: program ", show pnum
+                                , " failed with error. (test doesn't have error file)" ]
               return False
             Just f -> do
               errorFile <- readFile f
-              return (errorFile == err)
-        ExitSuccess -> do
-          putStrLn $ concat [ "krun ended, args were: ", show args ]
+              if errorFile == err
+                then return True
+                else do
+                  putStrLn $ concat [ "FAILURE: program ", show pnum
+                                    , " failed with error. (error outputs don't match)" ]
+                  return False
+        ExitSuccess ->
           case stdoutf of
             Nothing -> return True
             Just f -> do
               outputFile <- readFile f
               output <- hGetContents stdout
-              return $ outputFile == output
+              if outputFile == output
+                then return True
+                else do
+                  putStrLn $ concat [ "FALURE: program ", show pnum, " failed. (outputs don't match)" ]
+                  return False
 
     checkExt :: String -> FilePath -> Bool
     --checkExt ext path | trace (show (ext, path)) False = undefined
@@ -125,10 +143,10 @@ runKRuns verbose _ timeout tests = do
       case ext of
         Nothing   -> -- skip the test
                      return []
-        Just ext' -> liftIO $ do
+        Just ext' -> liftIO $
           liftM concat $ forM programs $ \p -> do
             dirContents <- getDirectoryContents p
-            let progFiles = filter (\f -> checkExt ext' f && not (takeFileName f `elem` excludes)) dirContents
+            let progFiles = filter (\f -> checkExt ext' f && (takeFileName f `notElem` excludes)) dirContents
             return $ map (\f ->
                          let stdinf  = dropExtension f `addExtension` ext' `addExtension` "in"
                              stdoutf = dropExtension f `addExtension` ext' `addExtension` "out"
@@ -138,6 +156,10 @@ runKRuns verbose _ timeout tests = do
                              stdoutr = if stdoutf `elem` dirContents then Just (p </> stdoutf) else Nothing
                              stderrr = if stderrf `elem` dirContents then Just (p </> stderrf) else Nothing
                           in (defPath, p </> f, stdinr, stdoutr, stderrr)) progFiles
+
+    countJusts :: (a -> Maybe b) -> [a] -> Int
+    countJusts fn []       = 0
+    countJusts fn (x : xs) = maybe 0 (const 1) (fn x) + countJusts fn xs
 
 -- TODO: show help message when it's run without arguments
 main :: IO ()
